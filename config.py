@@ -13,7 +13,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 # ALLOWED USERS — add Telegram IDs here
 # ─────────────────────────────────────────────
 ALLOWED_USERS = {
-    int(os.getenv("OWNER_ID", "123456789")),  # original owner
+    int(os.getenv("OWNER_ID", "6353328701")),  # original owner
     776065946,                                    # second user
     # add more IDs here when needed:
     # 111111111,
