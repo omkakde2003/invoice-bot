@@ -7,7 +7,7 @@ import os
 # ─────────────────────────────────────────────
 # REQUIRED: Fill in before running
 # ─────────────────────────────────────────────
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8739488313:AAEWwFI0SrI074v2HmcKxD5zSFVRGzU8cQQ")
 
 # ─────────────────────────────────────────────
 # ALLOWED USERS — add Telegram IDs here
