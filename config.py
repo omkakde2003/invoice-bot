@@ -13,7 +13,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "8739488313:AAEWwFI0SrI074v2HmcKxD5zSFVRGzU8c
 # ALLOWED USERS — both IDs hardcoded
 # ─────────────────────────────────────────────
 ALLOWED_USERS = {
-    6353328701,   # original owner
+    6536685508,   # original owner
     776065946,    # second user
 }
 
