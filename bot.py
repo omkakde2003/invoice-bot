@@ -4,10 +4,10 @@ Full conversation flow: customer details → service selection → summary → P
 """
 
 import logging
-import os
+import io
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
-    ReplyKeyboardMarkup, ReplyKeyboardRemove,
+    ReplyKeyboardRemove,
 )
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -15,7 +15,7 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from config import BOT_TOKEN, OWNER_ID, CURRENCY_SYMBOL
+from config import BOT_TOKEN, ALLOWED_USERS, CURRENCY_SYMBOL
 from services import SERVICES
 from invoice_generator import generate_invoice, next_invoice_number
 
@@ -41,11 +41,11 @@ logger = logging.getLogger(__name__)
 ) = range(6)
 
 # ─────────────────────────────────────────────
-# Owner guard
+# Access guard — allows multiple users
 # ─────────────────────────────────────────────
 
-def _is_owner(update: Update) -> bool:
-    return update.effective_user.id == OWNER_ID
+def _is_allowed(update: Update) -> bool:
+    return update.effective_user.id in ALLOWED_USERS
 
 
 async def _reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -59,7 +59,6 @@ async def _reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─────────────────────────────────────────────
 
 def _service_keyboard(selected_names: set) -> InlineKeyboardMarkup:
-    """Build an inline keyboard of services, marking already-selected ones."""
     buttons = []
     for svc in SERVICES:
         label = f"✅ {svc}" if svc in selected_names else svc
@@ -68,14 +67,14 @@ def _service_keyboard(selected_names: set) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(buttons)
 
 
-def _format_selected(services: list[dict]) -> str:
+def _format_selected(services: list) -> str:
     if not services:
         return "_(none yet)_"
     lines = [f"• {s['name']}:  {CURRENCY_SYMBOL}{float(s['price']):,.2f}" for s in services]
     return "\n".join(lines)
 
 
-def _total(services: list[dict]) -> float:
+def _total(services: list) -> float:
     return sum(float(s["price"]) for s in services)
 
 
@@ -84,13 +83,13 @@ def _total(services: list[dict]) -> float:
 # ─────────────────────────────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if not _is_owner(update):
+    if not _is_allowed(update):
         await _reject(update, context)
         return ConversationHandler.END
 
     context.user_data.clear()
     await update.message.reply_text(
-        "👋 Welcome to your *Invoice Bot*!\n\n"
+        "👋 Welcome to *Clean Pune Invoice Bot*!\n\n"
         "I'll guide you through creating a professional PDF invoice.\n\n"
         "Let's start — what is the *customer's name*?",
         parse_mode="Markdown",
@@ -103,7 +102,7 @@ async def new_invoice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if not _is_owner(update):
+    if not _is_allowed(update):
         await _reject(update, context)
         return ConversationHandler.END
 
@@ -120,7 +119,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 # ─────────────────────────────────────────────
 
 async def got_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if not _is_owner(update):
+    if not _is_allowed(update):
         return ConversationHandler.END
 
     name = update.message.text.strip()
@@ -137,7 +136,7 @@ async def got_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def got_address(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if not _is_owner(update):
+    if not _is_allowed(update):
         return ConversationHandler.END
 
     address = update.message.text.strip()
@@ -163,8 +162,7 @@ async def got_address(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 # ─────────────────────────────────────────────
 
 async def service_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle inline button tap on a service."""
-    if not _is_owner(update):
+    if not _is_allowed(update):
         return ConversationHandler.END
 
     query = update.callback_query
@@ -181,7 +179,6 @@ async def service_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
             return PICK_SERVICE
 
-        # Show summary for confirmation
         name    = context.user_data["customer_name"]
         address = context.user_data["customer_address"]
         svc_txt = _format_selected(services)
@@ -206,13 +203,11 @@ async def service_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # A service was tapped
     svc_name = data.removeprefix("svc:")
-
-    # Check if already selected
     services = context.user_data.get("services", [])
     selected_names = {s["name"] for s in services}
 
     if svc_name in selected_names:
-        # Remove it (toggle off)
+        # Toggle off — remove it
         context.user_data["services"] = [s for s in services if s["name"] != svc_name]
         selected_names.discard(svc_name)
         svc_txt = _format_selected(context.user_data["services"])
@@ -225,7 +220,7 @@ async def service_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return PICK_SERVICE
 
-    # Store the service being priced
+    # Ask for price
     context.user_data["pending_service"] = svc_name
     await query.edit_message_text(
         f"💵 Enter the price for *{svc_name}*:\n_(numbers only, e.g. 350 or 1500.50)_",
@@ -235,8 +230,7 @@ async def service_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def got_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Receive a typed price for the pending service."""
-    if not _is_owner(update):
+    if not _is_allowed(update):
         return ConversationHandler.END
 
     raw = update.message.text.strip().replace(",", "")
@@ -272,14 +266,13 @@ async def got_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 # ─────────────────────────────────────────────
 
 async def confirm_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if not _is_owner(update):
+    if not _is_allowed(update):
         return ConversationHandler.END
 
     query = update.callback_query
     await query.answer()
 
     if query.data == "confirm:edit":
-        # Go back to service picker
         services = context.user_data.get("services", [])
         selected_names = {s["name"] for s in services}
         svc_txt = _format_selected(services)
@@ -292,36 +285,39 @@ async def confirm_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return PICK_SERVICE
 
-    # confirm:yes — generate the invoice
+    # confirm:yes — generate invoice
     await query.edit_message_text("⏳ Generating your invoice PDF…")
 
-    name    = context.user_data["customer_name"]
-    address = context.user_data["customer_address"]
-    services= context.user_data["services"]
+    name     = context.user_data["customer_name"]
+    address  = context.user_data["customer_address"]
+    services = context.user_data["services"]
 
     try:
-        pdf_path = generate_invoice(name, address, services)
+        # Returns (bytes, filename) — no disk file needed
+        pdf_bytes, pdf_filename = generate_invoice(name, address, services)
     except Exception as e:
         logger.exception("PDF generation failed")
-        await query.message.reply_text(f"❌ Failed to generate invoice:\n`{e}`", parse_mode="Markdown")
-        return ConversationHandler.END
-
-    # Send the PDF
-    with open(pdf_path, "rb") as f:
-        await query.message.reply_document(
-            document=f,
-            filename=os.path.basename(pdf_path),
-            caption=(
-                f"📄 Invoice for *{name}*\n"
-                f"Total: {CURRENCY_SYMBOL}{_total(services):,.2f}"
-            ),
+        await query.message.reply_text(
+            f"❌ Failed to generate invoice:\n`{e}`",
             parse_mode="Markdown",
         )
+        return ConversationHandler.END
+
+    # Send PDF directly from memory
+    await query.message.reply_document(
+        document=io.BytesIO(pdf_bytes),
+        filename=pdf_filename,
+        caption=(
+            f"📄 Invoice for *{name}*\n"
+            f"Total: {CURRENCY_SYMBOL}{_total(services):,.2f}"
+        ),
+        parse_mode="Markdown",
+    )
 
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton("✅ Yes", callback_data="another:yes"),
-            InlineKeyboardButton("❌ No", callback_data="another:no"),
+            InlineKeyboardButton("❌ No",  callback_data="another:no"),
         ]
     ])
     await query.message.reply_text(
@@ -338,7 +334,7 @@ async def confirm_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 # ─────────────────────────────────────────────
 
 async def another_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if not _is_owner(update):
+    if not _is_allowed(update):
         return ConversationHandler.END
 
     query = update.callback_query
@@ -352,16 +348,18 @@ async def another_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return ASK_NAME
     else:
-        await query.edit_message_text("👋 All done! Type /new whenever you need a new invoice.")
+        await query.edit_message_text(
+            "👋 All done! Type /new whenever you need a new invoice."
+        )
         return ConversationHandler.END
 
 
 # ─────────────────────────────────────────────
-# Fallback for unexpected text in PICK_SERVICE
+# Fallback
 # ─────────────────────────────────────────────
 
 async def unexpected_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if not _is_owner(update):
+    if not _is_allowed(update):
         return ConversationHandler.END
     await update.message.reply_text(
         "Please use the buttons above to select a service, or tap ✔️ Done.",
@@ -379,7 +377,7 @@ def main():
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            CommandHandler("new", new_invoice),
+            CommandHandler("new",   new_invoice),
         ],
         states={
             ASK_NAME: [

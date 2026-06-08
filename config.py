@@ -7,8 +7,17 @@ import os
 # ─────────────────────────────────────────────
 # REQUIRED: Fill in before running
 # ─────────────────────────────────────────────
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8739488313:AAEWwFI0SrI074v2HmcKxD5zSFVRGzU8cQQ")
-OWNER_ID  = int(os.getenv("OWNER_ID", "6536685508"))
+BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+
+# ─────────────────────────────────────────────
+# ALLOWED USERS — add Telegram IDs here
+# ─────────────────────────────────────────────
+ALLOWED_USERS = {
+    int(os.getenv("OWNER_ID", "123456789")),  # original owner
+    776065946,                                    # second user
+    # add more IDs here when needed:
+    # 111111111,
+}
 
 # ─────────────────────────────────────────────
 # BUSINESS DETAILS  (extracted from invoice)
